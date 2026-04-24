@@ -1,15 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME, getExpectedPassword } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword } from "@/lib/auth";
+import { updateSupabaseSession } from "@/lib/supabase/middleware";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const expectedPassword = getExpectedPassword();
-
-  if (!expectedPassword) {
-    return NextResponse.next();
-  }
+  const authMode = getAuthMode();
 
   const isPublicPath =
     pathname === "/login" ||
@@ -19,12 +16,38 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/logo.svg") ||
     pathname.match(/\.(?:png|jpg|jpeg|gif|svg|webp|ico)$/);
 
-  if (isPublicPath) {
+  if (authMode === "open") {
+    return NextResponse.next();
+  }
+
+  if (authMode === "supabase") {
+    const { response, user } = await updateSupabaseSession(request);
+
+    if (isPublicPath) {
+      if (pathname === "/login" && user) {
+        return NextResponse.redirect(new URL("/", request.url));
+      }
+
+      return response;
+    }
+
+    if (user) {
+      return response;
+    }
+
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirectTo", pathname);
+
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const expectedPassword = getExpectedPassword();
+
+  if (!expectedPassword || isPublicPath) {
     return NextResponse.next();
   }
 
   const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-
   if (authCookie === expectedPassword) {
     return NextResponse.next();
   }

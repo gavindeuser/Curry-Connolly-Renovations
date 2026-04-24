@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Building2, CheckCircle2, Clock3, Layers3, WalletCards } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 
 import { Card } from "@/components/ui/card";
 import { LightboxImage } from "@/components/ui/lightbox-image";
@@ -15,6 +16,7 @@ import {
   type MaterialOption,
   type SystemCombination,
 } from "@/lib/data/preconstruction";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn, formatCurrency } from "@/lib/utils/format";
 
 type SelectorProps = {
@@ -227,6 +229,15 @@ type RankingRow = {
   selected: boolean;
 };
 
+type SavedPairing = {
+  id: string;
+  name: string;
+  note: string;
+  structural_id: string;
+  skin_id: string;
+  created_at: string;
+};
+
 const skinStructureSections = [
   {
     id: "overview",
@@ -416,16 +427,6 @@ const recommendationPriorities: RecommendationPriority[] = [
   { id: "highestDurability", label: "Highest durability", description: "Favor long-life, secure, resilient systems." },
   { id: "lowestMaintenance", label: "Low maintenance", description: "Favor systems described as low maintenance." },
   { id: "mostDesignFlexibility", label: "Design flexibility", description: "Favor systems that support more finish and form options." },
-];
-
-const recommendationKeywordBoosts: Array<{ priorityId: RecommendationPriorityId; keywords: string[] }> = [
-  { priorityId: "lowestCost", keywords: ["budget", "cost", "cheap", "economical", "value", "first cost"] },
-  { priorityId: "fastestSchedule", keywords: ["fast", "schedule", "quick", "soon", "duration", "timeline"] },
-  { priorityId: "lowProcurementRisk", keywords: ["lead time", "procurement", "availability", "supply chain", "risk"] },
-  { priorityId: "bestThermalPerformance", keywords: ["thermal", "energy", "insulation", "operating", "cooling", "heating"] },
-  { priorityId: "highestDurability", keywords: ["durable", "durability", "security", "resilient", "robust"] },
-  { priorityId: "lowestMaintenance", keywords: ["maintenance", "upkeep", "low maintenance"] },
-  { priorityId: "mostDesignFlexibility", keywords: ["design", "aesthetic", "appearance", "flexibility", "look", "facade"] },
 ];
 
 type RecommendationResult = {
@@ -885,7 +886,21 @@ export function PreconstructionDashboard() {
   const [activeSectionId, setActiveSectionId] = useState<SkinStructureRenderableSectionId>("overview");
   const [activeDecisionToolViewId, setActiveDecisionToolViewId] = useState<DecisionToolViewId>("scenario-picker");
   const [selectedPriorityIds, setSelectedPriorityIds] = useState<RecommendationPriorityId[]>([]);
-  const [recommendationNote, setRecommendationNote] = useState("");
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [savedPairings, setSavedPairings] = useState<SavedPairing[]>([]);
+  const [savedPairingName, setSavedPairingName] = useState("");
+  const [savedPairingNote, setSavedPairingNote] = useState("");
+  const [savedPairingMessage, setSavedPairingMessage] = useState("");
+  const [isLoadingSavedPairings, setIsLoadingSavedPairings] = useState(false);
+  const [isSavingPairing, setIsSavingPairing] = useState(false);
+
+  const isSupabaseConfigured =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const supabase = useMemo(
+    () => (isSupabaseConfigured ? createSupabaseBrowserClient() : null),
+    [isSupabaseConfigured],
+  );
 
   const compatibleSkinIdsByStructural = useMemo(
     () =>
@@ -946,6 +961,8 @@ export function PreconstructionDashboard() {
 
   const combinedPros = [...(selectedStructural?.pros ?? []), ...(selectedSkin?.pros ?? [])].slice(0, 5);
   const combinedCons = [...(selectedStructural?.cons ?? []), ...(selectedSkin?.cons ?? [])].slice(0, 5);
+  const defaultSavedPairingName =
+    selectedStructural && selectedSkin ? `${selectedStructural.shortLabel} + ${selectedSkin.shortLabel}` : "";
   const combinationRows = useMemo(
     () =>
       systemCombinations.map((combination) => {
@@ -977,16 +994,11 @@ export function PreconstructionDashboard() {
     [combinationRows],
   );
   const recommendation = useMemo(() => {
-    const note = recommendationNote.trim().toLowerCase();
-    const inferredPriorityIds = recommendationKeywordBoosts
-      .filter(({ keywords }) => keywords.some((keyword) => note.includes(keyword)))
-      .map(({ priorityId }) => priorityId);
-    const activePriorityIds = Array.from(new Set([...selectedPriorityIds, ...inferredPriorityIds]));
+    const activePriorityIds = [...selectedPriorityIds];
 
     if (activePriorityIds.length === 0) {
       return {
         activePriorityIds,
-        inferredPriorityIds,
         rankedResults: [] as RecommendationResult[],
         primaryResult: null as RecommendationResult | null,
         secondaryResult: null as RecommendationResult | null,
@@ -1053,12 +1065,127 @@ export function PreconstructionDashboard() {
 
     return {
       activePriorityIds,
-      inferredPriorityIds,
       rankedResults,
       primaryResult: rankedResults[0] ?? null,
       secondaryResult: rankedResults[1] ?? null,
     };
-  }, [recommendationNote, selectedPriorityIds]);
+  }, [selectedPriorityIds]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!isCancelled) {
+        setSupabaseUser(data.user ?? null);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSupabaseUser(session?.user ?? null);
+    });
+
+    return () => {
+      isCancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !supabaseUser) {
+      setSavedPairings([]);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingSavedPairings(true);
+    setSavedPairingMessage("");
+
+    void supabase
+      .from("saved_skin_structure_pairings")
+      .select("id, name, note, structural_id, skin_id, created_at")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (isCancelled) {
+          return;
+        }
+
+        if (error) {
+          setSavedPairingMessage(error.message);
+          setSavedPairings([]);
+        } else {
+          setSavedPairings((data ?? []) as SavedPairing[]);
+        }
+
+        setIsLoadingSavedPairings(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [supabase, supabaseUser]);
+
+  const handleSavePairing = async () => {
+    if (!supabase || !supabaseUser || !selectedStructural || !selectedSkin) {
+      return;
+    }
+
+    const pairingName = savedPairingName.trim() || defaultSavedPairingName;
+
+    if (!pairingName) {
+      setSavedPairingMessage("Enter a name before saving this pairing.");
+      return;
+    }
+
+    setIsSavingPairing(true);
+    setSavedPairingMessage("");
+
+    const { data, error } = await supabase
+      .from("saved_skin_structure_pairings")
+      .insert({
+        user_id: supabaseUser.id,
+        name: pairingName,
+        note: savedPairingNote.trim(),
+        structural_id: selectedStructuralId,
+        skin_id: selectedSkinId,
+      })
+      .select("id, name, note, structural_id, skin_id, created_at")
+      .single();
+
+    if (error) {
+      setSavedPairingMessage(error.message);
+      setIsSavingPairing(false);
+      return;
+    }
+
+    setSavedPairings((current) => [data as SavedPairing, ...current]);
+    setSavedPairingName("");
+    setSavedPairingNote("");
+    setSavedPairingMessage("Pairing saved to your shared workspace.");
+    setIsSavingPairing(false);
+  };
+
+  const handleDeletePairing = async (pairingId: string) => {
+    if (!supabase) {
+      return;
+    }
+
+    setSavedPairingMessage("");
+
+    const { error } = await supabase.from("saved_skin_structure_pairings").delete().eq("id", pairingId);
+
+    if (error) {
+      setSavedPairingMessage(error.message);
+      return;
+    }
+
+    setSavedPairings((current) => current.filter((pairing) => pairing.id !== pairingId));
+  };
 
   useEffect(() => {
     document.title = "CORE Pre-Construction Dashboard";
@@ -1237,7 +1364,7 @@ export function PreconstructionDashboard() {
                   <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Project Priorities</p>
                   <h2 className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)]">Recommendation assistant</h2>
                   <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-                    Check the priorities that matter most, add any project context, and the app will rank the studied assemblies.
+                    Check the priorities that matter most and the app will rank the studied assemblies.
                   </p>
                   <div className="mt-6 grid gap-3">
                     {recommendationPriorities.map((priority) => {
@@ -1266,18 +1393,6 @@ export function PreconstructionDashboard() {
                         </label>
                       );
                     })}
-                  </div>
-                  <div className="mt-6">
-                    <label className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--core-green)]" htmlFor="recommendation-note">
-                      Project note
-                    </label>
-                    <textarea
-                      id="recommendation-note"
-                      value={recommendationNote}
-                      onChange={(event) => setRecommendationNote(event.target.value)}
-                      placeholder="Example: Elementary school, long-term operating savings matter more than first cost, but schedule still matters."
-                      className="mt-3 min-h-32 w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--core-green)]"
-                    />
                   </div>
                 </div>
 
@@ -1371,16 +1486,11 @@ export function PreconstructionDashboard() {
                           </p>
                         </div>
                       ) : null}
-
-                      {recommendation.inferredPriorityIds.length > 0 ? (
-                        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
-                          Note keywords also influenced the recommendation.
-                        </p>
-                      ) : null}
+                      {recommendation.activePriorityIds.length > 0 ? null : null}
                     </>
                   ) : (
                     <div className="mt-6 rounded-[1.5rem] border border-dashed border-[var(--border)] bg-white p-6 text-sm leading-6 text-[var(--muted)]">
-                      Select at least one priority or add a project note to generate a recommendation.
+                      Select at least one priority to generate a recommendation.
                     </div>
                   )}
                 </div>
@@ -1389,7 +1499,135 @@ export function PreconstructionDashboard() {
           ) : null}
 
           {activeDecisionToolViewId === "scenario-picker" ? (
-            <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <section className="space-y-6">
+            <Card>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Saved Pairings</p>
+                  <h3 className="mt-2 text-2xl font-bold tracking-tight text-[var(--foreground)]">Keep option sets for later review</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                    Save the current structural plus skin combination so signed-in teammates can revisit it quickly.
+                  </p>
+                </div>
+                <div className="rounded-full bg-[var(--concrete)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                  {supabaseUser?.email ?? "Supabase required"}
+                </div>
+              </div>
+
+              {isSupabaseConfigured ? (
+                <>
+                  <div className="mt-5 grid gap-3">
+                    <input
+                      type="text"
+                      value={savedPairingName}
+                      onChange={(event) => setSavedPairingName(event.target.value)}
+                      placeholder={defaultSavedPairingName || "Name this pairing"}
+                      className="w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
+                    />
+                    <textarea
+                      value={savedPairingNote}
+                      onChange={(event) => setSavedPairingNote(event.target.value)}
+                      placeholder="Optional note for why this pairing matters"
+                      rows={3}
+                      className="w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleSavePairing()}
+                        disabled={!supabaseUser || isSavingPairing}
+                        className="rounded-full bg-[var(--core-green)] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingPairing ? "Saving..." : "Save current pairing"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {savedPairingMessage ? (
+                    <p className="mt-4 rounded-[1rem] border border-[color:rgba(0,131,72,0.2)] bg-white px-4 py-3 text-sm text-[var(--foreground)]">
+                      {savedPairingMessage}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-5 grid gap-3">
+                    {isLoadingSavedPairings ? (
+                      <div className="rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm text-[var(--muted)]">
+                        Loading saved pairings...
+                      </div>
+                    ) : savedPairings.length > 0 ? (
+                      savedPairings.map((pairing) => {
+                        const isActive =
+                          pairing.structural_id === selectedStructuralId && pairing.skin_id === selectedSkinId;
+                        const pairingStructural = getOptionById(pairing.structural_id);
+                        const pairingSkin = getOptionById(pairing.skin_id);
+
+                        return (
+                          <div
+                            key={pairing.id}
+                            className={cn(
+                              "rounded-[1.25rem] border bg-white p-4",
+                              isActive ? "border-[var(--core-green)]" : "border-[var(--border)]",
+                            )}
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-lg font-semibold text-[var(--foreground)]">{pairing.name}</h4>
+                                  {isActive ? (
+                                    <span className="rounded-full bg-[color:rgba(0,131,72,0.1)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--core-green)]">
+                                      Active
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                                  {pairingStructural?.name} + {pairingSkin?.name}
+                                </p>
+                                {pairing.note ? (
+                                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{pairing.note}</p>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {!isActive ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      startTransition(() => {
+                                        setSelectedStructuralId(pairing.structural_id);
+                                        setSelectedSkinId(pairing.skin_id);
+                                      })
+                                    }
+                                    className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                                  >
+                                    Load pairing
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeletePairing(pairing.id)}
+                                  className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-black"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm text-[var(--muted)]">
+                        No saved pairings yet. Save one from the current selection to start building a shared shortlist.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5 rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm leading-6 text-[var(--muted)]">
+                  Add your Supabase URL and publishable key, then run the SQL in <code>supabase/setup.sql</code> to
+                  turn on shared saved pairings.
+                </div>
+              )}
+            </Card>
+            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <Card className="space-y-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
@@ -1530,6 +1768,7 @@ export function PreconstructionDashboard() {
                 </div>
               )}
             </Card>
+            </div>
           </section>
           ) : null}
 

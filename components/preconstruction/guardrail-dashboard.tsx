@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { startTransition, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { Building2, CheckCircle2, Clock3, WalletCards } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import {
   type GuardrailMountType,
   type GuardrailOption,
 } from "@/lib/data/guardrail-preconstruction";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn, formatCurrency } from "@/lib/utils/format";
 
 const guardrailSections = [
@@ -109,6 +111,15 @@ type GuardrailPlanConfig = {
   annotations: GuardrailPlanAnnotation[];
 };
 
+type SavedGuardrailScenario = {
+  id: string;
+  name: string;
+  note: string;
+  option_id: string;
+  mount_type: GuardrailMountType;
+  created_at: string;
+};
+
 const guardrailPlanConfigs: Record<GuardrailPlanId, GuardrailPlanConfig> = {
   curry: {
     id: "curry",
@@ -162,15 +173,6 @@ const guardrailRecommendationPriorities: GuardrailRecommendationPriority[] = [
   { id: "mostRefinedLook", label: "Most refined look", description: "Favor the strongest architectural finish and visual presence." },
   { id: "concealedFasteners", label: "Concealed fasteners", description: "Favor cleaner fastening conditions and less exposed hardware." },
   { id: "highestDurability", label: "Highest durability", description: "Favor robust long-term performance from the study notes." },
-];
-
-const guardrailKeywordBoosts: Array<{ priorityId: GuardrailRecommendationPriorityId; keywords: string[] }> = [
-  { priorityId: "lowestCost", keywords: ["budget", "low cost", "economical", "upfront", "first cost"] },
-  { priorityId: "fastestInstall", keywords: ["schedule", "fast", "quick", "install", "phasing"] },
-  { priorityId: "lowestMaintenance", keywords: ["maintenance", "upkeep", "easy to clean", "operations"] },
-  { priorityId: "mostRefinedLook", keywords: ["refined", "premium", "appearance", "architectural", "clean look"] },
-  { priorityId: "concealedFasteners", keywords: ["concealed", "minimal hardware", "clean detailing"] },
-  { priorityId: "highestDurability", keywords: ["durable", "durability", "robust", "long life"] },
 ];
 
 const guardrailPriorityScores: Record<GuardrailRecommendationPriorityId, Record<string, number>> = {
@@ -465,28 +467,37 @@ export function GuardrailDashboard() {
   const [selectedOptionId, setSelectedOptionId] = useState<string>(guardrailOptions[0]?.id ?? "pipe");
   const [selectedMountType, setSelectedMountType] = useState<GuardrailMountType>("side-mounted");
   const [selectedPriorities, setSelectedPriorities] = useState<GuardrailRecommendationPriorityId[]>([]);
-  const [projectNote, setProjectNote] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState<GuardrailPlanId>("curry");
   const [showPlanGuardrails, setShowPlanGuardrails] = useState(true);
   const [showPlanLabels, setShowPlanLabels] = useState(true);
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [savedScenarios, setSavedScenarios] = useState<SavedGuardrailScenario[]>([]);
+  const [savedScenarioName, setSavedScenarioName] = useState("");
+  const [savedScenarioNote, setSavedScenarioNote] = useState("");
+  const [savedScenarioMessage, setSavedScenarioMessage] = useState("");
+  const [isLoadingSavedScenarios, setIsLoadingSavedScenarios] = useState(false);
+  const [isSavingScenario, setIsSavingScenario] = useState(false);
 
   const selectedOption = getOption(selectedOptionId);
   const selectedImage = guardrailSourceImages[selectedOption.id];
   const selectedPlan = guardrailPlanConfigs[selectedPlanId];
+  const isSupabaseConfigured =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const supabase = useMemo(
+    () => (isSupabaseConfigured ? createSupabaseBrowserClient() : null),
+    [isSupabaseConfigured],
+  );
+  const defaultSavedScenarioName = selectedOption
+    ? `${selectedOption.shortLabel} - ${formatMountLabel(selectedMountType)}`
+    : "";
 
   const selectedCostPerLf = getCostForMount(selectedOption, selectedMountType);
   const curryTotal = selectedCostPerLf * campusGuardrailQuantities.curry;
   const connollyTotal = selectedCostPerLf * campusGuardrailQuantities.connolly;
 
   const recommendedScenario = useMemo(() => {
-    const normalizedNote = projectNote.toLowerCase();
     const activePrioritySet = new Set(selectedPriorities);
-
-    for (const boost of guardrailKeywordBoosts) {
-      if (boost.keywords.some((keyword) => normalizedNote.includes(keyword))) {
-        activePrioritySet.add(boost.priorityId);
-      }
-    }
 
     if (activePrioritySet.size === 0) {
       return null;
@@ -524,10 +535,123 @@ export function GuardrailDashboard() {
               .map((priority) => priority.label),
       activePriorities: Array.from(activePrioritySet),
     };
-  }, [projectNote, selectedPriorities]);
+  }, [selectedPriorities]);
 
-  const recommendationMatchesSelection =
-    recommendedScenario?.winner.id === selectedOptionId && recommendedScenario?.winnerMountType === selectedMountType;
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!isCancelled) {
+        setSupabaseUser(data.user ?? null);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSupabaseUser(session?.user ?? null);
+    });
+
+    return () => {
+      isCancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !supabaseUser) {
+      setSavedScenarios([]);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingSavedScenarios(true);
+    setSavedScenarioMessage("");
+
+    void supabase
+      .from("saved_guardrail_scenarios")
+      .select("id, name, note, option_id, mount_type, created_at")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (isCancelled) {
+          return;
+        }
+
+        if (error) {
+          setSavedScenarioMessage(error.message);
+          setSavedScenarios([]);
+        } else {
+          setSavedScenarios((data ?? []) as SavedGuardrailScenario[]);
+        }
+
+        setIsLoadingSavedScenarios(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [supabase, supabaseUser]);
+
+  const handleSaveScenario = async () => {
+    if (!supabase || !supabaseUser || !selectedOption) {
+      return;
+    }
+
+    const scenarioName = savedScenarioName.trim() || defaultSavedScenarioName;
+
+    if (!scenarioName) {
+      setSavedScenarioMessage("Enter a name before saving this guardrail scenario.");
+      return;
+    }
+
+    setIsSavingScenario(true);
+    setSavedScenarioMessage("");
+
+    const { data, error } = await supabase
+      .from("saved_guardrail_scenarios")
+      .insert({
+        user_id: supabaseUser.id,
+        name: scenarioName,
+        note: savedScenarioNote.trim(),
+        option_id: selectedOptionId,
+        mount_type: selectedMountType,
+      })
+      .select("id, name, note, option_id, mount_type, created_at")
+      .single();
+
+    if (error) {
+      setSavedScenarioMessage(error.message);
+      setIsSavingScenario(false);
+      return;
+    }
+
+    setSavedScenarios((current) => [data as SavedGuardrailScenario, ...current]);
+    setSavedScenarioName("");
+    setSavedScenarioNote("");
+    setSavedScenarioMessage("Guardrail scenario saved to your shared workspace.");
+    setIsSavingScenario(false);
+  };
+
+  const handleDeleteScenario = async (scenarioId: string) => {
+    if (!supabase) {
+      return;
+    }
+
+    setSavedScenarioMessage("");
+
+    const { error } = await supabase.from("saved_guardrail_scenarios").delete().eq("id", scenarioId);
+
+    if (error) {
+      setSavedScenarioMessage(error.message);
+      return;
+    }
+
+    setSavedScenarios((current) => current.filter((scenario) => scenario.id !== scenarioId));
+  };
 
   return (
     <div
@@ -668,7 +792,7 @@ export function GuardrailDashboard() {
                 <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Project Priorities</p>
                 <h2 className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)]">Recommendation assistant for guardrail direction</h2>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">
-                  Check the priorities that matter most, add a short project note if helpful, and the app will suggest the best-fit guardrail option using the study data already shown in this tab.
+                  Check the priorities that matter most and the app will suggest the best-fit guardrail option using the study data already shown in this tab.
                 </p>
                 <div className="mt-6 grid gap-3">
                   {guardrailRecommendationPriorities.map((priority) => {
@@ -704,18 +828,6 @@ export function GuardrailDashboard() {
                     );
                   })}
                 </div>
-                <div className="mt-5">
-                  <label className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--core-green)]" htmlFor="guardrail-project-note">
-                    Project note
-                  </label>
-                  <textarea
-                    id="guardrail-project-note"
-                    value={projectNote}
-                    onChange={(event) => setProjectNote(event.target.value)}
-                    placeholder="Example: We want the cleanest appearance possible, but the district is still sensitive to long-term upkeep."
-                    className="mt-3 min-h-32 w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--core-green)]"
-                  />
-                </div>
               </div>
 
               {recommendedScenario ? (
@@ -733,7 +845,7 @@ export function GuardrailDashboard() {
                   <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
                     Runner-up: <span className="font-semibold text-[var(--foreground)]">{recommendedScenario.runnerUp?.name ?? "Not available"}</span>.
                   </p>
-                  {!recommendationMatchesSelection ? (
+                  {!(recommendedScenario.winner.id === selectedOptionId && recommendedScenario.winnerMountType === selectedMountType) ? (
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button
                         type="button"
@@ -752,7 +864,7 @@ export function GuardrailDashboard() {
                 </div>
               ) : (
                 <div className="rounded-[1.5rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm leading-6 text-[var(--muted)]">
-                  Select one or more priorities, or add a project note, to generate a recommendation.
+                  Select one or more priorities to generate a recommendation.
                 </div>
               )}
             </div>
@@ -760,6 +872,133 @@ export function GuardrailDashboard() {
           ) : null}
 
           {activeDecisionToolViewId === "scenario-picker" ? (
+          <div className="space-y-6">
+            <Card>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Saved Scenarios</p>
+                  <h3 className="mt-2 text-2xl font-bold tracking-tight text-[var(--foreground)]">Keep guardrail options for team review</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                    Save the current option plus mount type so signed-in teammates can return to shortlist directions quickly.
+                  </p>
+                </div>
+                <div className="rounded-full bg-[var(--concrete)] px-4 py-2 text-sm font-semibold text-[var(--foreground)]">
+                  {supabaseUser?.email ?? "Supabase required"}
+                </div>
+              </div>
+
+              {isSupabaseConfigured ? (
+                <>
+                  <div className="mt-5 grid gap-3">
+                    <input
+                      type="text"
+                      value={savedScenarioName}
+                      onChange={(event) => setSavedScenarioName(event.target.value)}
+                      placeholder={defaultSavedScenarioName || "Name this guardrail scenario"}
+                      className="w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
+                    />
+                    <textarea
+                      value={savedScenarioNote}
+                      onChange={(event) => setSavedScenarioNote(event.target.value)}
+                      placeholder="Optional note for why this scenario matters"
+                      rows={3}
+                      className="w-full rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveScenario()}
+                        disabled={!supabaseUser || isSavingScenario}
+                        className="rounded-full bg-[var(--core-green)] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingScenario ? "Saving..." : "Save current scenario"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {savedScenarioMessage ? (
+                    <p className="mt-4 rounded-[1rem] border border-[color:rgba(0,131,72,0.2)] bg-white px-4 py-3 text-sm text-[var(--foreground)]">
+                      {savedScenarioMessage}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-5 grid gap-3">
+                    {isLoadingSavedScenarios ? (
+                      <div className="rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm text-[var(--muted)]">
+                        Loading saved guardrail scenarios...
+                      </div>
+                    ) : savedScenarios.length > 0 ? (
+                      savedScenarios.map((scenario) => {
+                        const isActive =
+                          scenario.option_id === selectedOptionId && scenario.mount_type === selectedMountType;
+                        const scenarioOption = getOption(scenario.option_id);
+
+                        return (
+                          <div
+                            key={scenario.id}
+                            className={cn(
+                              "rounded-[1.25rem] border bg-white p-4",
+                              isActive ? "border-[var(--core-green)]" : "border-[var(--border)]",
+                            )}
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-lg font-semibold text-[var(--foreground)]">{scenario.name}</h4>
+                                  {isActive ? (
+                                    <span className="rounded-full bg-[color:rgba(0,131,72,0.1)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--core-green)]">
+                                      Active
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                                  {scenarioOption?.name} · {formatMountLabel(scenario.mount_type)}
+                                </p>
+                                {scenario.note ? (
+                                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{scenario.note}</p>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {!isActive ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      startTransition(() => {
+                                        setSelectedOptionId(scenario.option_id);
+                                        setSelectedMountType(scenario.mount_type);
+                                      })
+                                    }
+                                    className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                                  >
+                                    Load scenario
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteScenario(scenario.id)}
+                                  className="rounded-full border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-black"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm text-[var(--muted)]">
+                        No saved guardrail scenarios yet. Save one from the current selection to start a shared shortlist.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5 rounded-[1.25rem] border border-dashed border-[var(--border)] bg-white px-4 py-5 text-sm leading-6 text-[var(--muted)]">
+                  Add your Supabase URL and publishable key, then run the SQL in <code>supabase/setup.sql</code> to
+                  turn on shared guardrail scenario saving.
+                </div>
+              )}
+            </Card>
           <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <Card>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Material Selection Tool</p>
@@ -849,6 +1088,7 @@ export function GuardrailDashboard() {
                 </div>
               ) : null}
             </Card>
+          </div>
           </div>
           ) : null}
         </div>
