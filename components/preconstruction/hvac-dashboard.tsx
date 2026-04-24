@@ -208,6 +208,7 @@ const hvacSections = [
 ] as const;
 
 type HvacSectionId = (typeof hvacSections)[number]["id"];
+type HvacRenderableSectionId = HvacSectionId | "lifecycle" | "notes";
 
 const hvacDecisionToolViews = [
   {
@@ -346,7 +347,7 @@ export function HvacDashboard() {
   } as CSSProperties;
 
   const [selectedOptionId, setSelectedOptionId] = useState("rtu");
-  const [activeSectionId, setActiveSectionId] = useState<HvacSectionId>("overview");
+  const [activeSectionId, setActiveSectionId] = useState<HvacRenderableSectionId>("overview");
   const [activeDecisionToolViewId, setActiveDecisionToolViewId] = useState<HvacDecisionToolViewId>("scenario-picker");
   const [selectedPriorityIds, setSelectedPriorityIds] = useState<HvacRecommendationPriorityId[]>([]);
   const [recommendationNote, setRecommendationNote] = useState("");
@@ -659,7 +660,7 @@ export function HvacDashboard() {
                       {recommendation.primaryResult.breakdown.slice(0, 3).map((entry) => (
                         <div key={entry.id} className="flex items-start gap-3">
                           <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--core-green)]" />
-                          <span>{getHvacPriorityReason(entry.id, recommendation.primaryResult)}</span>
+                          <span>{getHvacPriorityReason(entry.id, recommendation.primaryResult!)}</span>
                         </div>
                       ))}
                     </div>

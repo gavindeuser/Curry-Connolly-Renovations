@@ -13,6 +13,7 @@ import {
   structuralOptions,
   systemCombinations,
   type MaterialOption,
+  type SystemCombination,
 } from "@/lib/data/preconstruction";
 import { cn, formatCurrency } from "@/lib/utils/format";
 
@@ -254,6 +255,7 @@ const skinStructureSections = [
 ] as const;
 
 type SkinStructureSectionId = (typeof skinStructureSections)[number]["id"];
+type SkinStructureRenderableSectionId = SkinStructureSectionId | "future-ready";
 
 const decisionToolViews = [
   {
@@ -880,7 +882,7 @@ export function PreconstructionDashboard() {
   } as CSSProperties;
   const [selectedStructuralId, setSelectedStructuralId] = useState("icf-block");
   const [selectedSkinId, setSelectedSkinId] = useState("eifs");
-  const [activeSectionId, setActiveSectionId] = useState<SkinStructureSectionId>("overview");
+  const [activeSectionId, setActiveSectionId] = useState<SkinStructureRenderableSectionId>("overview");
   const [activeDecisionToolViewId, setActiveDecisionToolViewId] = useState<DecisionToolViewId>("scenario-picker");
   const [selectedPriorityIds, setSelectedPriorityIds] = useState<RecommendationPriorityId[]>([]);
   const [recommendationNote, setRecommendationNote] = useState("");
@@ -1334,7 +1336,7 @@ export function PreconstructionDashboard() {
                             {recommendation.primaryResult.breakdown.slice(0, 3).map((entry) => (
                               <div key={entry.id} className="flex items-start gap-3">
                                 <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--core-green)]" />
-                                <span>{getPriorityReason(entry.id, recommendation.primaryResult)}</span>
+                                <span>{getPriorityReason(entry.id, recommendation.primaryResult!)}</span>
                               </div>
                             ))}
                           </div>
