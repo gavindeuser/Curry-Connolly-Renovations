@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const expectedPassword = getExpectedPassword();
 
   if (!expectedPassword) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/", request.url), 303);
   }
 
   if (!isPasswordValid(password)) {
@@ -20,10 +20,10 @@ export async function POST(request: Request) {
       loginUrl.searchParams.set("redirectTo", redirectTo);
     }
 
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(loginUrl, 303);
   }
 
-  const response = NextResponse.redirect(new URL(redirectTo.startsWith("/") ? redirectTo : "/", request.url));
+  const response = NextResponse.redirect(new URL(redirectTo.startsWith("/") ? redirectTo : "/", request.url), 303);
 
   response.cookies.set({
     name: AUTH_COOKIE_NAME,
