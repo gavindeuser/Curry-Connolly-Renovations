@@ -20,6 +20,7 @@ export function SupabaseLoginForm({ hasSharedAccessCode = false }: { hasSharedAc
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showAccessCode, setShowAccessCode] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -100,15 +101,26 @@ export function SupabaseLoginForm({ hasSharedAccessCode = false }: { hasSharedAc
           <label htmlFor="access-code" className="text-sm font-semibold text-[var(--foreground)]">
             Access Code
           </label>
-          <input
-            id="access-code"
-            name="access-code"
-            type="password"
-            value={accessCode}
-            onChange={(event) => setAccessCode(event.target.value)}
-            required
-            className="mt-2 w-full rounded-[1.25rem] border border-[var(--border)] px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
-          />
+          <div className="mt-2 flex items-center overflow-hidden rounded-[1.25rem] border border-[var(--border)] bg-white transition focus-within:border-[var(--core-green)]">
+            <input
+              id="access-code"
+              name="access-code"
+              type={showAccessCode ? "text" : "password"}
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              required
+              className="w-full px-4 py-3 text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAccessCode((current) => !current)}
+              className="flex h-full items-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--muted)] transition hover:text-[var(--foreground)]"
+              aria-label={showAccessCode ? "Hide access code" : "Show access code"}
+            >
+              {showAccessCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              <span>{showAccessCode ? "Hide" : "Show"}</span>
+            </button>
+          </div>
         </div>
       ) : null}
       <div>
