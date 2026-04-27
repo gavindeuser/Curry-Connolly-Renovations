@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword, isPasswordConfigured } from "@/lib/auth";
+import { getAuthMode } from "@/lib/auth";
 import { updateSupabaseSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
@@ -20,12 +20,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const passwordConfigured = isPasswordConfigured();
-  const expectedPassword = getExpectedPassword();
-  const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const hasPasswordAccess = !passwordConfigured || authCookie === expectedPassword;
-
-  if ((authMode === "password" || authMode === "hybrid") && !hasPasswordAccess && !isPublicPath) {
+  if (authMode === "password" && !isPublicPath) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(loginUrl);
@@ -39,7 +34,7 @@ export async function middleware(request: NextRequest) {
     const { response, user } = await updateSupabaseSession(request);
 
     if (isPublicPath) {
-      if (pathname === "/login" && user && hasPasswordAccess) {
+      if (pathname === "/login" && user) {
         return NextResponse.redirect(new URL("/", request.url));
       }
 

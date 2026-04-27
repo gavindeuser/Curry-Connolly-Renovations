@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { getAuthMode } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, getAuthMode } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
-  if (getAuthMode() === "supabase") {
+  if (getAuthMode() === "supabase" || getAuthMode() === "hybrid") {
     const supabase = await createClient();
     await supabase.auth.signOut();
   }
 
-  return NextResponse.redirect(new URL("/login", request.url), 303);
+  const response = NextResponse.redirect(new URL("/login", request.url), 303);
+
+  response.cookies.set({
+    name: AUTH_COOKIE_NAME,
+    value: "",
+    expires: new Date(0),
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  });
+
+  return response;
 }

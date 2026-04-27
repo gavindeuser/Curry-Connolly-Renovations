@@ -6,12 +6,13 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 
-export function SupabaseLoginForm() {
+export function SupabaseLoginForm({ hasSharedAccessCode = false }: { hasSharedAccessCode?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo")?.startsWith("/") ? searchParams.get("redirectTo")! : "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [error, setError] = useState("");
@@ -30,7 +31,28 @@ export function SupabaseLoginForm() {
       return;
     }
 
+    if (mode === "sign-up" && hasSharedAccessCode && !accessCode.trim()) {
+      setError("Enter the shared access code to continue.");
+      return;
+    }
+
     setIsSubmitting(true);
+
+    if (mode === "sign-up" && hasSharedAccessCode) {
+      const accessResponse = await fetch("/api/auth/access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accessCode }),
+      });
+
+      if (!accessResponse.ok) {
+        setError("The access code was incorrect. Please try again.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     const supabase = createClient();
     const action =
@@ -73,6 +95,22 @@ export function SupabaseLoginForm() {
           : "Create a project account so you can save options, revisit scenarios, and collaborate across the dashboards."}
       </p>
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      {mode === "sign-up" && hasSharedAccessCode ? (
+        <div>
+          <label htmlFor="access-code" className="text-sm font-semibold text-[var(--foreground)]">
+            Access Code
+          </label>
+          <input
+            id="access-code"
+            name="access-code"
+            type="password"
+            value={accessCode}
+            onChange={(event) => setAccessCode(event.target.value)}
+            required
+            className="mt-2 w-full rounded-[1.25rem] border border-[var(--border)] px-4 py-3 text-sm outline-none transition focus:border-[var(--core-green)]"
+          />
+        </div>
+      ) : null}
       <div>
         <label htmlFor="email" className="text-sm font-semibold text-[var(--foreground)]">
           Email

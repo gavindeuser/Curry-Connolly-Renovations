@@ -46,9 +46,11 @@ export function AuthStatus() {
       <button
         type="button"
         disabled={isSigningOut}
-        onClick={() => {
+        onClick={async () => {
           setIsSigningOut(true);
-          void supabase.auth.signOut().finally(() => {
+          await fetch("/api/auth/logout", {
+            method: "POST",
+          }).finally(() => {
             router.replace("/login");
             router.refresh();
             setIsSigningOut(false);

@@ -1,9 +1,8 @@
 import type { CSSProperties } from "react";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 
 import { SupabaseLoginForm } from "@/components/auth/supabase-login-form";
-import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword, isPasswordConfigured } from "@/lib/auth";
+import { getAuthMode, isPasswordConfigured } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 type LoginPageProps = {
@@ -18,10 +17,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const hasError = params.error === "1";
   const redirectTo = params.redirectTo?.startsWith("/") ? params.redirectTo : "/";
   const authMode = getAuthMode();
-  const cookieStore = await cookies();
-  const hasPasswordAccess =
-    !isPasswordConfigured() || cookieStore.get(AUTH_COOKIE_NAME)?.value === getExpectedPassword();
-  const shouldUseSupabase = (authMode === "supabase" || authMode === "hybrid") && hasPasswordAccess;
+  const shouldUseSupabase = authMode === "supabase" || authMode === "hybrid";
+  const hasSharedAccessCode = shouldUseSupabase && isPasswordConfigured();
 
   if (shouldUseSupabase) {
     const supabase = await createClient();
@@ -50,17 +47,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white p-8 shadow-[0_28px_80px_rgba(0,0,0,0.22)]">
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Protected Access</p>
         {shouldUseSupabase ? (
-          <SupabaseLoginForm />
+          <SupabaseLoginForm hasSharedAccessCode={hasSharedAccessCode} />
         ) : (
           <form action="/api/auth/login" method="POST" className="mt-6 space-y-4">
-            <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">Enter Password</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">Enter Access Code</h1>
             <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-              This dashboard is password protected. Enter the shared password to continue.
+              This dashboard is protected. Enter the shared access code to continue.
             </p>
             <input type="hidden" name="redirectTo" value={redirectTo} />
             <div>
               <label htmlFor="password" className="text-sm font-semibold text-[var(--foreground)]">
-                Password
+                Access Code
               </label>
               <input
                 id="password"
@@ -72,7 +69,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </div>
             {hasError ? (
               <p className="rounded-[1rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                The password was incorrect. Please try again.
+                The access code was incorrect. Please try again.
               </p>
             ) : null}
             <button
