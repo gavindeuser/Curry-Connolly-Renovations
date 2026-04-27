@@ -15,8 +15,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main className="mx-auto w-[min(96vw,1600px)] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-4 flex items-center gap-4 sm:gap-5">
+    <main className="mx-auto w-[min(96vw,1600px)] px-4 py-8 print:p-0 sm:px-6 lg:px-8">
+      <div className="mb-4 flex items-center gap-4 print:hidden sm:gap-5">
         <div className="flex h-16 w-32 items-center rounded-[1.25rem] bg-[#050505] px-4 py-3 ring-1 ring-black/10 sm:h-20 sm:w-40 sm:px-5">
           <Image src="/logo.svg" alt="CORE Logo" width={160} height={80} className="h-full w-full object-contain object-left" priority />
         </div>
@@ -28,7 +28,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <AuthStatus />
       </div>
-      <PreconTabs />
+      <div className="print:hidden">
+        <PreconTabs />
+      </div>
       {children}
     </main>
   );

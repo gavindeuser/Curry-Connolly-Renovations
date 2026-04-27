@@ -40,3 +40,44 @@ textarea {
 ::selection {
   background: rgba(0, 131, 72, 0.18);
 }
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.45in;
+  }
+
+  html,
+  body {
+    min-height: auto;
+    background: #fff;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  main {
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-report {
+    display: block !important;
+    margin: 0 !important;
+  }
+
+  .print-report__sheet {
+    max-width: 7.6in;
+    padding: 0;
+    margin: 0 auto !important;
+    page-break-inside: avoid;
+  }
+
+  .print-keep-together {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

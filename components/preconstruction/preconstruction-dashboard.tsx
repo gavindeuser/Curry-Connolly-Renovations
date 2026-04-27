@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Building2, CheckCircle2, Clock3, Layers3, WalletCards } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, Clock3, Layers3, Printer, WalletCards } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 import { Card } from "@/components/ui/card";
@@ -963,6 +963,9 @@ export function PreconstructionDashboard() {
   const combinedCons = [...(selectedStructural?.cons ?? []), ...(selectedSkin?.cons ?? [])].slice(0, 5);
   const defaultSavedPairingName =
     selectedStructural && selectedSkin ? `${selectedStructural.shortLabel} + ${selectedSkin.shortLabel}` : "";
+  const activeSavedPairing = savedPairings.find(
+    (pairing) => pairing.structural_id === selectedStructuralId && pairing.skin_id === selectedSkinId,
+  );
   const combinationRows = useMemo(
     () =>
       systemCombinations.map((combination) => {
@@ -1194,8 +1197,129 @@ export function PreconstructionDashboard() {
   const activeSection = skinStructureSections.find((section) => section.id === activeSectionId) ?? skinStructureSections[0];
 
   return (
+    <>
+    <div className="print-report hidden print:block">
+      <div className="print-report__sheet mx-auto bg-white text-black">
+        <div className="border-b border-black/15 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#008348]">CORE Construction</p>
+          <h1 className="mt-2 text-2xl font-bold">Skin + Structure Option Report</h1>
+          <p className="mt-2 text-xs text-black/70">Precon Dashboard for Tempe Curry and Connolly Renovations</p>
+          <p className="mt-1 text-xs text-black/70">{new Date().toLocaleDateString()}</p>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#008348]">Selected Options</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Structural System</p>
+              <p className="mt-1 text-base font-bold">{selectedStructural?.name}</p>
+            </div>
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Architectural Skin</p>
+              <p className="mt-1 text-base font-bold">{selectedSkin?.name}</p>
+            </div>
+          </div>
+          {activeSavedPairing?.note ? (
+            <div className="mt-3 rounded-2xl border border-black/10 bg-[#f2f3f3] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Saved Note</p>
+              <p className="mt-1 text-xs leading-5 text-black/75">{activeSavedPairing.note}</p>
+            </div>
+          ) : null}
+        </div>
+
+        {selectedCombination ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Estimated Cost</p>
+              <p className="mt-1 text-base font-bold">{formatCurrency(selectedCombination.totalCostPerSf)}/SF</p>
+            </div>
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Schedule Duration</p>
+              <p className="mt-1 text-base font-bold">{selectedCombination.totalScheduleWeeks} weeks</p>
+            </div>
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Lead Time</p>
+              <p className="mt-1 text-base font-bold">{selectedCombination.leadTimeImpact}</p>
+            </div>
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Best Fit</p>
+              <p className="mt-1 text-sm font-bold leading-5">{selectedCombination.bestFor}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedCombination ? (
+          <div className="mt-5 rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Constructability Focus</p>
+            <div className="mt-2 space-y-2">
+              {selectedCombination.considerations.map((item, index) => (
+                <div key={`print-consideration-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#008348]" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {selectedStructuralImage || selectedSkinImage ? (
+          <div className="mt-5 rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Visual Pairing</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {selectedStructuralImage ? (
+                <div className="overflow-hidden rounded-xl border border-black/10 bg-[#f2f3f3] p-2">
+                  <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black/55">Structural System</p>
+                  <p className="px-1 pt-1 text-xs font-bold">{selectedStructural?.name}</p>
+                  <img
+                    src={selectedStructuralImage.src}
+                    alt={selectedStructuralImage.alt}
+                    className="mt-2 h-36 w-full rounded-lg object-contain"
+                  />
+                </div>
+              ) : null}
+              {selectedSkinImage ? (
+                <div className="overflow-hidden rounded-xl border border-black/10 bg-[#f2f3f3] p-2">
+                  <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-black/55">Architectural Skin</p>
+                  <p className="px-1 pt-1 text-xs font-bold">{selectedSkin?.name}</p>
+                  <img
+                    src={selectedSkinImage.src}
+                    alt={selectedSkinImage.alt}
+                    className="mt-2 h-36 w-full rounded-lg object-contain"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="print-keep-together mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Advantages</p>
+            <div className="mt-2 space-y-2">
+              {combinedPros.map((item, index) => (
+                <div key={`print-pro-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#008348]" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Considerations</p>
+            <div className="mt-2 space-y-2">
+              {combinedCons.map((item, index) => (
+                <div key={`print-con-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-black/55" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div
-      className="space-y-8 pb-10"
+      className="space-y-8 pb-10 print:hidden"
       style={{
         ...themeVars,
         fontFamily: '"Segoe UI", "Helvetica Neue", Arial, sans-serif',
@@ -1662,8 +1786,20 @@ export function PreconstructionDashboard() {
                     {selectedStructural?.name} + {selectedSkin?.name}
                   </h2>
                 </div>
-                <div className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-                  Active scenario
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--core-green)] hover:text-[var(--core-green)]"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Printer className="h-4 w-4" />
+                      Print Report
+                    </span>
+                  </button>
+                  <div className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                    Active scenario
+                  </div>
                 </div>
               </div>
 
@@ -1814,5 +1950,6 @@ export function PreconstructionDashboard() {
         </section>
       ) : null}
     </div>
+    </>
   );
 }

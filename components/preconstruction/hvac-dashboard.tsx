@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ArrowRight, Building2, Clock3, WalletCards, Wrench } from "lucide-react";
+import { ArrowRight, Building2, Clock3, Printer, WalletCards, Wrench } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { LightboxImage } from "@/components/ui/lightbox-image";
@@ -361,6 +361,7 @@ export function HvacDashboard() {
   const selectedScenarios = getScenarios(selectedOptionId);
   const selectedLifecycleTotal = Math.min(...selectedScenarios.map((scenario) => scenario.totalCost));
   const selectedOptionImage = hvacSourceImages[selectedOptionId];
+  const activeSavedScenario = savedScenarios.find((scenario) => scenario.option_id === selectedOptionId);
   const isSupabaseConfigured =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -560,8 +561,88 @@ export function HvacDashboard() {
   }
 
   return (
+    <>
+    <div className="print-report hidden print:block">
+      <div className="print-report__sheet mx-auto bg-white text-black">
+        <div className="border-b border-black/15 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#008348]">CORE Construction</p>
+          <h1 className="mt-2 text-2xl font-bold">HVAC Option Report</h1>
+          <p className="mt-2 text-xs text-black/70">Precon Dashboard for Tempe Curry and Connolly Renovations</p>
+          <p className="mt-1 text-xs text-black/70">{new Date().toLocaleDateString()}</p>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#008348]">Selected Option</p>
+          <div className="mt-3 rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">HVAC System</p>
+            <p className="mt-1 text-base font-bold">{selectedOption.name}</p>
+          </div>
+          {activeSavedScenario?.note ? (
+            <div className="mt-3 rounded-2xl border border-black/10 bg-[#f2f3f3] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Saved Note</p>
+              <p className="mt-1 text-xs leading-5 text-black/75">{activeSavedScenario.note}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Base Price Impact</p>
+            <p className="mt-1 text-base font-bold">
+              {selectedOption.addToBasePrice === 0 ? "Included" : formatCurrency(selectedOption.addToBasePrice)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Availability</p>
+            <p className="mt-1 text-base font-bold">{selectedOption.availability}</p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Life Expectancy</p>
+            <p className="mt-1 text-sm font-bold leading-5">{selectedOption.lifeExpectancy}</p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Best Lifecycle Total</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(selectedLifecycleTotal)}</p>
+          </div>
+        </div>
+
+        {selectedOptionImage ? (
+          <div className="mt-5 rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Source Study Image</p>
+            <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-[#f2f3f3] p-2">
+              <img src={selectedOptionImage.src} alt={selectedOptionImage.alt} className="h-44 w-full rounded-lg object-contain" />
+            </div>
+          </div>
+        ) : null}
+
+        <div className="print-keep-together mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Advantages</p>
+            <div className="mt-2 space-y-2">
+              {selectedOption.pros.map((item, index) => (
+                <div key={`print-hvac-pro-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#008348]" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Considerations</p>
+            <div className="mt-2 space-y-2">
+              {selectedOption.cons.map((item, index) => (
+                <div key={`print-hvac-con-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-black/55" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div
-      className="space-y-8 pb-10"
+      className="space-y-8 pb-10 print:hidden"
       style={{
         ...themeVars,
         fontFamily: '"Segoe UI", "Helvetica Neue", Arial, sans-serif',
@@ -943,8 +1024,20 @@ export function HvacDashboard() {
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Summary Card</p>
               <h2 className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)]">{selectedOption.name}</h2>
             </div>
-            <div className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-              Active scenario
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--core-green)] hover:text-[var(--core-green)]"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Printer className="h-4 w-4" />
+                  Print Report
+                </span>
+              </button>
+              <div className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                Active scenario
+              </div>
             </div>
           </div>
 
@@ -1034,5 +1127,6 @@ export function HvacDashboard() {
       </section>
       ) : null}
     </div>
+    </>
   );
 }

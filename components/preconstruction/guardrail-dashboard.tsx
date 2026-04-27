@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Building2, CheckCircle2, Clock3, WalletCards } from "lucide-react";
+import { Building2, CheckCircle2, Clock3, Printer, WalletCards } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { LightboxImage } from "@/components/ui/lightbox-image";
@@ -362,7 +362,6 @@ function GuardrailPlanViewer({
   useEffect(() => {
     let cancelled = false;
     const sourceImage = new window.Image();
-    sourceImage.crossOrigin = "anonymous";
     sourceImage.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = sourceImage.width;
@@ -428,10 +427,17 @@ function GuardrailPlanViewer({
         setProcessedImages({ baseSrc, overlaySrc });
       }
     };
+    sourceImage.onerror = () => {
+      if (!cancelled) {
+        setProcessedImages(null);
+      }
+    };
     sourceImage.src = plan.src;
 
     return () => {
       cancelled = true;
+      sourceImage.onload = null;
+      sourceImage.onerror = null;
     };
   }, [plan]);
 
@@ -481,6 +487,9 @@ export function GuardrailDashboard() {
   const selectedOption = getOption(selectedOptionId);
   const selectedImage = guardrailSourceImages[selectedOption.id];
   const selectedPlan = guardrailPlanConfigs[selectedPlanId];
+  const activeSavedScenario = savedScenarios.find(
+    (scenario) => scenario.option_id === selectedOptionId && scenario.mount_type === selectedMountType,
+  );
   const isSupabaseConfigured =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -654,8 +663,100 @@ export function GuardrailDashboard() {
   };
 
   return (
+    <>
+    <div className="print-report hidden print:block">
+      <div className="print-report__sheet mx-auto bg-white text-black">
+        <div className="border-b border-black/15 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#008348]">CORE Construction</p>
+          <h1 className="mt-2 text-2xl font-bold">Guardrail Option Report</h1>
+          <p className="mt-2 text-xs text-black/70">Precon Dashboard for Tempe Curry and Connolly Renovations</p>
+          <p className="mt-1 text-xs text-black/70">{new Date().toLocaleDateString()}</p>
+        </div>
+
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#008348]">Selected Option</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Guardrail System</p>
+              <p className="mt-1 text-base font-bold">{selectedOption.name}</p>
+            </div>
+            <div className="rounded-2xl border border-black/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Mount Type</p>
+              <p className="mt-1 text-base font-bold">{formatMountLabel(selectedMountType)}</p>
+            </div>
+          </div>
+          {activeSavedScenario?.note ? (
+            <div className="mt-3 rounded-2xl border border-black/10 bg-[#f2f3f3] px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Saved Note</p>
+              <p className="mt-1 text-xs leading-5 text-black/75">{activeSavedScenario.note}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Conceptual Cost</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(selectedCostPerLf)}/LF</p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Schedule</p>
+            <p className="mt-1 text-base font-bold">{selectedOption.installationDuration}</p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Curry Total</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(curryTotal)}</p>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/55">Connolly Total</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(connollyTotal)}</p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-black/10 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Fastener Condition</p>
+          <p className="mt-1 text-base font-bold">{selectedOption.fastenerType}</p>
+          <p className="mt-2 text-xs leading-5 text-black/75">
+            Visual character: <span className="font-semibold">{selectedOption.metrics.visualCharacter}</span>
+          </p>
+        </div>
+
+        {selectedImage ? (
+          <div className="mt-5 rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Source Study Image</p>
+            <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-[#f2f3f3] p-2">
+              <img src={selectedImage.src} alt={selectedImage.alt} className="h-44 w-full rounded-lg object-contain" />
+            </div>
+          </div>
+        ) : null}
+
+        <div className="print-keep-together mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Advantages</p>
+            <div className="mt-2 space-y-2">
+              {selectedOption.pros.map((item, index) => (
+                <div key={`print-guardrail-pro-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#008348]" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-black/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#008348]">Considerations</p>
+            <div className="mt-2 space-y-2">
+              {selectedOption.cons.map((item, index) => (
+                <div key={`print-guardrail-con-${index}`} className="flex gap-2 text-xs leading-5 text-black/75">
+                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-black/55" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div
-      className="space-y-8 pb-10"
+      className="space-y-8 pb-10 print:hidden"
       style={
         {
           "--core-green": "#008348",
@@ -1041,8 +1142,22 @@ export function GuardrailDashboard() {
             </Card>
 
             <Card>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Summary Card</p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)]">{selectedOption.name}</h2>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Summary Card</p>
+                  <h2 className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)]">{selectedOption.name}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--core-green)] hover:text-[var(--core-green)]"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Printer className="h-4 w-4" />
+                    Print Report
+                  </span>
+                </button>
+              </div>
               <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selectedOption.summary}</p>
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <MetricCard
@@ -1180,5 +1295,6 @@ export function GuardrailDashboard() {
         </div>
       ) : null}
     </div>
+    </>
   );
 }
