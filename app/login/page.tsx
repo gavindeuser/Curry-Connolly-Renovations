@@ -1,7 +1,10 @@
 import type { CSSProperties } from "react";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { SupabaseLoginForm } from "@/components/auth/supabase-login-form";
-import { getAuthMode } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword, isPasswordConfigured } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 type LoginPageProps = {
   searchParams?: Promise<{
@@ -15,6 +18,21 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const hasError = params.error === "1";
   const redirectTo = params.redirectTo?.startsWith("/") ? params.redirectTo : "/";
   const authMode = getAuthMode();
+  const cookieStore = await cookies();
+  const hasPasswordAccess =
+    !isPasswordConfigured() || cookieStore.get(AUTH_COOKIE_NAME)?.value === getExpectedPassword();
+  const shouldUseSupabase = (authMode === "supabase" || authMode === "hybrid") && hasPasswordAccess;
+
+  if (shouldUseSupabase) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      redirect(redirectTo);
+    }
+  }
 
   return (
     <main
@@ -31,7 +49,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     >
       <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white p-8 shadow-[0_28px_80px_rgba(0,0,0,0.22)]">
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--core-green)]">Protected Access</p>
-        {authMode === "supabase" ? (
+        {shouldUseSupabase ? (
           <SupabaseLoginForm />
         ) : (
           <form action="/api/auth/login" method="POST" className="mt-6 space-y-4">
@@ -61,7 +79,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               type="submit"
               className="w-full rounded-full bg-[var(--core-green)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
-              Unlock Dashboard
+              Continue
             </button>
           </form>
         )}

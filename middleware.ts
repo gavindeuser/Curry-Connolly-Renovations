@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword, isPasswordConfigured } from "@/lib/auth";
 import { updateSupabaseSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
@@ -20,11 +20,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (authMode === "supabase") {
+  const passwordConfigured = isPasswordConfigured();
+  const expectedPassword = getExpectedPassword();
+  const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const hasPasswordAccess = !passwordConfigured || authCookie === expectedPassword;
+
+  if ((authMode === "password" || authMode === "hybrid") && !hasPasswordAccess && !isPublicPath) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirectTo", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (authMode === "password") {
+    return NextResponse.next();
+  }
+
+  if (authMode === "supabase" || authMode === "hybrid") {
     const { response, user } = await updateSupabaseSession(request);
 
     if (isPublicPath) {
-      if (pathname === "/login" && user) {
+      if (pathname === "/login" && user && hasPasswordAccess) {
         return NextResponse.redirect(new URL("/", request.url));
       }
 
@@ -41,21 +56,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const expectedPassword = getExpectedPassword();
-
-  if (!expectedPassword || isPublicPath) {
-    return NextResponse.next();
-  }
-
-  const authCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (authCookie === expectedPassword) {
-    return NextResponse.next();
-  }
-
-  const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("redirectTo", pathname);
-
-  return NextResponse.redirect(loginUrl);
+  return NextResponse.next();
 }
 
 export const config = {

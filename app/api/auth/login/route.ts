@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME, getExpectedPassword, isPasswordValid } from "@/lib/auth";
+import { AUTH_COOKIE_NAME, getAuthMode, getExpectedPassword, isPasswordValid } from "@/lib/auth";
 
 export async function POST(request: Request) {
   const formData = await request.formData();
@@ -23,7 +23,16 @@ export async function POST(request: Request) {
     return NextResponse.redirect(loginUrl, 303);
   }
 
-  const response = NextResponse.redirect(new URL(redirectTo.startsWith("/") ? redirectTo : "/", request.url), 303);
+  const destination =
+    getAuthMode() === "hybrid"
+      ? new URL("/login", request.url)
+      : new URL(redirectTo.startsWith("/") ? redirectTo : "/", request.url);
+
+  if (getAuthMode() === "hybrid" && redirectTo.startsWith("/")) {
+    destination.searchParams.set("redirectTo", redirectTo);
+  }
+
+  const response = NextResponse.redirect(destination, 303);
 
   response.cookies.set({
     name: AUTH_COOKIE_NAME,

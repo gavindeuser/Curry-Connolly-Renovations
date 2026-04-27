@@ -16,6 +16,10 @@ export function getExpectedPassword() {
   return process.env.APP_PASSWORD ?? "";
 }
 
+export function isPasswordConfigured() {
+  return getExpectedPassword().length > 0;
+}
+
 export function isPasswordValid(password: string) {
   const expectedPassword = getExpectedPassword();
 
@@ -23,11 +27,15 @@ export function isPasswordValid(password: string) {
 }
 
 export function getAuthMode() {
+  if (isPasswordConfigured() && isSupabaseConfigured()) {
+    return "hybrid" as const;
+  }
+
   if (isSupabaseConfigured()) {
     return "supabase" as const;
   }
 
-  if (getExpectedPassword()) {
+  if (isPasswordConfigured()) {
     return "password" as const;
   }
 
